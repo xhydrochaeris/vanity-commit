@@ -108,6 +108,12 @@ def finalize_commit(content_before_trailer: str, trailer: str, expected_hash: st
     print(f"done: {branch} now points to {actual_hash}")
 
 
+def confirm(prompt: str) -> bool:
+    """Ask a y/n question; only an explicit 'y' counts as yes."""
+    answer = input(f"{prompt} [y/N] ").strip().lower()
+    return answer == "y"
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--message", required=True, help="commit message")
@@ -123,6 +129,9 @@ def main():
     # newline (the format is "\nVanity: N"), which breaks naive
     # line-by-line parsing of the backend's stdout.
     trailer = f"\n\nVanity: {result['counter']}"
+    if not confirm(f"Commit as {result['hash']}?"):
+        print("aborted — nothing was written.")
+        return
     finalize_commit(content, trailer, result["hash"])
 
 
