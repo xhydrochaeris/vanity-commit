@@ -26,6 +26,16 @@
 #include <openssl/sha.h>
 
 #define MAX_BLOB 8192
+static const char hex[] = "0123456789abcdef";
+
+int hexval(char c)
+{
+    if ('0' <= c && c <= '9')
+        return c - '0';
+    if ('a' <= c && c <= 'f')
+        return c - 'a' + 10;
+    return -1;
+}
 
 int main(int argc, char **argv) {
     if (argc != 3) {
@@ -45,54 +55,83 @@ int main(int argc, char **argv) {
         }
     }
 
+    size_t full_bytes = target_len / 2;
+    int has_half_byte = target_len & 1;
+
+    unsigned char target_bytes[SHA_DIGEST_LENGTH];
+
+    for (size_t i = 0; i < full_bytes; i++) {
+        int hi = hexval(target[2*i]);
+        int lo = hexval(target[2*i + 1]);
+
+        if (hi < 0 || lo < 0) {
+            fprintf(stderr, "invalid hex digit\n");
+            exit(1);
+        }
+
+        target_bytes[i] = (hi << 4) | lo;
+    }
+
+    int last_nibble = 0;
+    if (has_half_byte) {
+        last_nibble = hexval(target[target_len - 1]);
+        if (last_nibble < 0) {
+            fprintf(stderr, "invalid hex digit\n");
+            exit(1);
+        }
+    }
+
     volatile int found = 0;
-    long winning_counter = -1;
+    unsigned long long winning_counter = -1;
     char winning_hex[SHA_DIGEST_LENGTH * 2 + 1];
     char winning_trailer[64];
 
     double t0 = omp_get_wtime();
-    uint64_t total_tried = 0;
+    unsigned long long total_tried = 0;
 
     #pragma omp parallel reduction(+:total_tried)
     {
         int tid = omp_get_thread_num();
         int nthreads = omp_get_num_threads();
-        uint64_t counter = tid;
+        unsigned long long counter = tid;
 
         char blob[MAX_BLOB];
         char header[32];
         unsigned char digest[SHA_DIGEST_LENGTH];
-        char hexdigest[SHA_DIGEST_LENGTH * 2 + 1];
         char trailer[64];
+        unsigned char full[MAX_BLOB + 32];
 
         memcpy(blob, before, before_len);
 
         while (!found) {
-            int trailer_len = snprintf(trailer, sizeof(trailer), "\n\nVanity: %ld", counter);
+            int trailer_len = snprintf(trailer, sizeof(trailer), "\n\nVanity: %llu", counter);
             memcpy(blob + before_len, trailer, trailer_len);
             size_t content_len = before_len + trailer_len;
 
             int header_len = snprintf(header, sizeof(header), "commit %zu", content_len);
 
             /* full git object = "commit <len>\0" + content, hashed as one buffer */
-            unsigned char full[MAX_BLOB + 32];
             memcpy(full, header, header_len);
             full[header_len] = '\0';
             memcpy(full + header_len + 1, blob, content_len);
 
             SHA1(full, header_len + 1 + content_len, digest);
-            for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
-                sprintf(hexdigest + i * 2, "%02x", digest[i]);
 
             total_tried++;
 
-            if (strncmp(hexdigest, target, target_len) == 0) {
+            if (memcmp(digest, target_bytes, full_bytes) == 0 &&
+                (!has_half_byte || ((digest[full_bytes] >> 4) == last_nibble)))
+            {
                 #pragma omp critical
                 {
                     if (!found) {
                         found = 1;
                         winning_counter = counter;
-                        memcpy(winning_hex, hexdigest, sizeof(hexdigest));
+                        for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+                            winning_hex[2*i]     = hex[digest[i] >> 4];
+                            winning_hex[2*i + 1] = hex[digest[i] & 0xF];
+                        }
+                        winning_hex[40] = '\0';
                         memcpy(winning_trailer, trailer, trailer_len + 1);
                     }
                 }
@@ -103,12 +142,12 @@ int main(int argc, char **argv) {
     }
 
     double elapsed = omp_get_wtime() - t0;
-    fprintf(stderr, "tried %ld hashes in %.2fs (%.1fM/s)\n",
+    fprintf(stderr, "tried %llu hashes in %.2fs (%.1fM/s)\n",
             total_tried, elapsed, total_tried / elapsed / 1e6);
 
     printf("hash: %s\n", winning_hex);
     printf("trailer: %s\n", winning_trailer);
-    printf("counter: %ld\n", winning_counter);
+    printf("counter: %llu\n", winning_counter);
 
     return 0;
 }
