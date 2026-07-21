@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-vanity_commit.py — construct a git commit object, search for a vanity hash
+vanity_commit.py - construct a git commit object, search for a vanity hash
 prefix using the vanity_cpu backend, and finalize the winning commit.
 
-Assumes vanity_cpu is already built and sitting next to this script (or on
-PATH) — no backend selection / auto-build yet, that's a later version.
+Assumes vanity_cpu and vanity_gpu are already built and sitting next to this
+script (or on PATH)
 """
 
 import subprocess
@@ -12,8 +12,8 @@ import sys
 import argparse
 from pathlib import Path
 
-BACKEND_BINARY = Path(__file__).parent / "vanity_cpu"
-
+BACKEND_CPU_BINARY = Path(__file__).parent / "vanity_cpu"
+BACKEND_GPU_BINARY = Path(__file__).parent / "vanity_gpu"
 
 def run_git(args, input_text=None, check=True):
     """Run a git command, return stripped stdout. Raises on failure if check=True."""
@@ -36,7 +36,7 @@ def build_commit_content(message: str) -> str:
     """
     tree = run_git(["write-tree"])
 
-    # First commit in a repo has no parent — rev-parse HEAD fails, and that's expected.
+    # First commit in a repo has no parent - rev-parse HEAD fails, and that's expected.
     parent_line = ""
     parent_check = subprocess.run(
         ["git", "rev-parse", "--verify", "-q", "HEAD"],
@@ -60,15 +60,15 @@ def build_commit_content(message: str) -> str:
     return content
 
 
-def run_backend(content_before_trailer: str, target: str) -> dict:
-    if not BACKEND_BINARY.exists():
+def run_backend(backend_binary, content_before_trailer: str, target: str) -> dict:
+    if not backend_binary.exists():
         sys.exit(
-            f"error: backend binary not found at {BACKEND_BINARY}\n"
+            f"error: backend binary not found at {backend_binary}\n"
             f"build it first: gcc -O3 -fopenmp vanity_cpu.c -o vanity_cpu -lcrypto"
         )
 
     result = subprocess.run(
-        [str(BACKEND_BINARY), content_before_trailer, target],
+        [str(backend_binary), content_before_trailer, target],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -101,7 +101,7 @@ def finalize_commit(content_before_trailer: str, trailer: str, expected_hash: st
         capture_output=True, text=True,
     )
     if branch_check.returncode != 0:
-        sys.exit("error: HEAD is not on a branch (detached HEAD?) — not moving anything automatically.")
+        sys.exit("error: HEAD is not on a branch (detached HEAD?) - not moving anything automatically.")
 
     branch = branch_check.stdout.strip()
     run_git(["update-ref", f"refs/heads/{branch}", actual_hash])
@@ -122,7 +122,7 @@ def main():
 
     content = build_commit_content(args.message)
     print('') # newline for aesthetic purpose only
-    result = run_backend(content, args.target)
+    result = run_backend(BACKEND_GPU_BINARY, content, args.target)
 
     print(f"found: {result['hash']}")
     # Reconstruct the trailer from the "Vanity: " line directly
@@ -130,7 +130,7 @@ def main():
     print(f"Vanity: {result['Vanity']}")
     trailer = f"\n\nVanity: {result['Vanity']}"
     if not confirm(f"Commit as {result['hash']}?"):
-        print("aborted — nothing was written.")
+        print("aborted - nothing was written.")
         return
     finalize_commit(content, trailer, result["hash"])
 
