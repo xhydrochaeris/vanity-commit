@@ -10,13 +10,15 @@ Additionally, a Python fallback implementation is planned (not that you'd need o
 
 Extending support for Windows and macOS is planned. macOS **will not** support the GPU implementation!
 
-## Build:
+## Build (CPU implementation):
 
 `gcc -O3 -fopenmp vanity_cpu.c -o vanity_cpu -lcrypto`
 
+(Ignore the comments about deprecated functions)
+
 ## Run:
 
-Test the implementation:
+Test the CPU implementation:
 
 `./vanity_cpu "<commit-content-before-trailer>" "69420"`
 

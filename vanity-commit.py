@@ -121,14 +121,14 @@ def main():
     args = parser.parse_args()
 
     content = build_commit_content(args.message)
+    print('') # newline for aesthetic purpose only
     result = run_backend(content, args.target)
 
     print(f"found: {result['hash']}")
-    # Reconstruct the trailer from the counter rather than parsing the
-    # backend's "trailer:" line directly — that field embeds its own
-    # newline (the format is "\nVanity: N"), which breaks naive
-    # line-by-line parsing of the backend's stdout.
-    trailer = f"\n\nVanity: {result['counter']}"
+    # Reconstruct the trailer from the "Vanity: " line directly
+    # Using "counter" isn't compatible anymore since we zero-pad the counter value in the trailer now.
+    print(f"Vanity: {result['Vanity']}")
+    trailer = f"\n\nVanity: {result['Vanity']}"
     if not confirm(f"Commit as {result['hash']}?"):
         print("aborted — nothing was written.")
         return

@@ -26,6 +26,10 @@
 #include <openssl/sha.h>
 
 #define MAX_BLOB 8192
+#define TRAILER_PREFIX "\n\nVanity: "
+#define TRAILER_PREFIX_LEN (sizeof(TRAILER_PREFIX) - 1) // - 1 to drop '/0' at the end
+#define COUNTER_DIGITS 20 // ULLONG_MAX = 18446744073709551615 is 20 decimal digits
+#define TRAILER_LEN (TRAILER_PREFIX_LEN + COUNTER_DIGITS)
 static const char hex[] = "0123456789abcdef";
 
 int hexval(char c)
@@ -81,6 +85,19 @@ int main(int argc, char **argv) {
         }
     }
 
+    // content_len and header_len are now constant since trailer is always exactly TRAILER_LEN bytes long, regardless of counter value
+    size_t content_len = before_len + TRAILER_LEN;
+    char header[32];
+    int header_len = snprintf(header, sizeof(header), "commit %zu", content_len);
+
+    // Hash the prefix exactly once. Every attempt clones this context instead of re-hashing header+before+trailer_prefix.
+    SHA_CTX base_ctx;
+    SHA1_Init(&base_ctx);
+    SHA1_Update(&base_ctx, header, header_len);
+    SHA1_Update(&base_ctx, "\0", 1);
+    SHA1_Update(&base_ctx, before, before_len);
+    SHA1_Update(&base_ctx, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
+
     volatile int found = 0;
     unsigned long long winning_counter = -1;
     char winning_hex[SHA_DIGEST_LENGTH * 2 + 1];
@@ -95,27 +112,15 @@ int main(int argc, char **argv) {
         int nthreads = omp_get_num_threads();
         unsigned long long counter = tid;
 
-        char blob[MAX_BLOB];
-        char header[32];
+        char counter_str[COUNTER_DIGITS + 1];
         unsigned char digest[SHA_DIGEST_LENGTH];
-        char trailer[64];
-        unsigned char full[MAX_BLOB + 32];
-
-        memcpy(blob, before, before_len);
 
         while (!found) {
-            int trailer_len = snprintf(trailer, sizeof(trailer), "\n\nVanity: %llu", counter);
-            memcpy(blob + before_len, trailer, trailer_len);
-            size_t content_len = before_len + trailer_len;
+            snprintf(counter_str, sizeof(counter_str), "%0*llu", COUNTER_DIGITS, counter);
 
-            int header_len = snprintf(header, sizeof(header), "commit %zu", content_len);
-
-            /* full git object = "commit <len>\0" + content, hashed as one buffer */
-            memcpy(full, header, header_len);
-            full[header_len] = '\0';
-            memcpy(full + header_len + 1, blob, content_len);
-
-            SHA1(full, header_len + 1 + content_len, digest);
+            SHA_CTX ctx = base_ctx; // copy CTX instead of re-hashing
+            SHA1_Update(&ctx, counter_str, COUNTER_DIGITS);
+            SHA1_Final(digest, &ctx);
 
             total_tried++;
 
@@ -132,7 +137,9 @@ int main(int argc, char **argv) {
                             winning_hex[2*i + 1] = hex[digest[i] & 0xF];
                         }
                         winning_hex[40] = '\0';
-                        memcpy(winning_trailer, trailer, trailer_len + 1);
+                        memcpy(winning_trailer, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
+                        memcpy(winning_trailer + TRAILER_PREFIX_LEN, counter_str, COUNTER_DIGITS);
+                        winning_trailer[TRAILER_LEN] = '\0';
                     }
                 }
             }
