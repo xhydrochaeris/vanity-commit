@@ -9,7 +9,7 @@ import sys, os
 import argparse
 from pathlib import Path
 
-BACKEND_BINARY = Path(__file__).parent / "vanity_cpu"
+BACKEND_BINARY = Path("/usr/lib/vanity-commit/vanity_cpu")
 AUTO_PARENT = object()
 
 
