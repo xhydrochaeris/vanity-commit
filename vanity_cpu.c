@@ -26,10 +26,11 @@
 #include <openssl/sha.h>
 
 #define MAX_BLOB 8192
-#define TRAILER_PREFIX "\n\nVanity: "
-#define TRAILER_PREFIX_LEN (sizeof(TRAILER_PREFIX) - 1) // - 1 to drop '/0' at the end
+//#define TRAILER_PREFIX "\n\nVanity: "
+//#define TRAILER_PREFIX_LEN (sizeof(TRAILER_PREFIX) - 1) // - 1 to drop '/0' at the end
 #define COUNTER_DIGITS 20 // ULLONG_MAX = 18446744073709551615 is 20 decimal digits
-#define TRAILER_LEN (TRAILER_PREFIX_LEN + COUNTER_DIGITS)
+//#define TRAILER_LEN (TRAILER_PREFIX_LEN + COUNTER_DIGITS)
+#define TRAILER_LEN COUNTER_DIGITS
 static const char hex[] = "0123456789abcdef";
 
 int hexval(char c)
@@ -96,7 +97,7 @@ int main(int argc, char **argv) {
     SHA1_Update(&base_ctx, header, header_len);
     SHA1_Update(&base_ctx, "\0", 1);
     SHA1_Update(&base_ctx, before, before_len);
-    SHA1_Update(&base_ctx, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
+    //SHA1_Update(&base_ctx, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
 
     volatile int found = 0;
     unsigned long long winning_counter = -1;
@@ -137,8 +138,9 @@ int main(int argc, char **argv) {
                             winning_hex[2*i + 1] = hex[digest[i] & 0xF];
                         }
                         winning_hex[40] = '\0';
-                        memcpy(winning_trailer, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
-                        memcpy(winning_trailer + TRAILER_PREFIX_LEN, counter_str, COUNTER_DIGITS);
+                        //memcpy(winning_trailer, TRAILER_PREFIX, TRAILER_PREFIX_LEN);
+                        //memcpy(winning_trailer + TRAILER_PREFIX_LEN, counter_str, COUNTER_DIGITS);
+                        memcpy(winning_trailer, counter_str, COUNTER_DIGITS);
                         winning_trailer[TRAILER_LEN] = '\0';
                     }
                 }
